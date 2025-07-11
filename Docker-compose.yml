@@ -1,0 +1,54 @@
+version: '3.8'
+networks:
+  access-bridge:
+    driver: bridge
+  application-bridge:
+    driver: bridge
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./ssl/cert.pem:/etc/ssl/certs/cert.pem:ro
+      - ./ssl/key.pem:/etc/ssl/private/key.pem:ro
+    networks:
+      - access-bridge
+    depends_on:
+      - ejbca-node1
+
+  ejbca-database:
+    container_name: ejbca-database
+    image: library/mariadb:latest
+    networks:
+      - application-bridge
+    environment:
+      - MYSQL_ROOT_PASSWORD=foo123
+      - MYSQL_DATABASE=ejbca
+      - MYSQL_USER=ejbca
+      - MYSQL_PASSWORD=ejbca
+    volumes:
+      - ./datadbdir:/var/lib/mysql:rw
+
+  ejbca-node1:
+    hostname: ejbca-node1
+    container_name: ejbca
+    image: keyfactor/ejbca-ce:latest
+    depends_on:
+      - ejbca-database
+    networks:
+      - access-bridge
+      - application-bridge
+    environment:
+      - DATABASE_JDBC_URL=jdbc:mariadb://ejbca-database:3306/ejbca?characterEncoding=UTF-8
+      - LOG_LEVEL_APP=INFO
+      - LOG_LEVEL_SERVER=INFO
+      - TLS_SETUP_ENABLED=simple
+    # Ports exposés seulement en interne
+    expose:
+      - "8080"
+      - "8443"
