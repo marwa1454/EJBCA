@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:10.6
+    container_name: ejbca-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: ejbca
+      MARIADB_DATABASE: ejbca
+      MARIADB_USER: ejbca
+      MARIADB_PASSWORD: ejbca
+    ports:
+      - "3307:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - ejbca-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  ejbca-ca:
+    image: primekey/ejbca-ce:8.2.0.1
+    container_name: ejbca-ca
+    environment:
+      DATABASE_JDBC_URL: jdbc:mariadb://mariadb:3306/ejbca
+      DATABASE_USER: ejbca
+      DATABASE_PASSWORD: ejbca
+      LOG_AUDIT_TO_DB: 'true'
+      EJBCA_ADMIN_PASSWORD: ejbca123
+      FORCE_CLIENTAUTH: 'true'
+      ENABLE_HEALTCHECK_OVER_HTTP: 'true'
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    volumes:
+      - ejbca_data:/mnt/data
+    networks:
+      - ejbca-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:8443/ejbca/publicweb/healthcheck.html || true"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  fastapi:
+    build: .
+    container_name: ejbca-api
+    environment:
+      EJBCA_HOST: ejbca-ca
+      EJBCA_PORT: 8443
+      EJBCA_PROTOCOL: https
+      EJBCA_WSDL_URL: https://ejbca-ca:8443/ejbca/ejbcaws/ejbcaws?wsdl
+      EJBCA_SOAP_URL: https://ejbca-ca:8443/ejbca/ejbcaws/ejbcaws
+      EJBCA_CLIENT_CERT: /app/certs/soapadmin_cert.pem
+      EJBCA_CLIENT_KEY: /app/certs/soapadmin_key.pem
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      DEBUG: 'True'
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ejbca-ca
+    volumes:
+      - ./app:/app/app
+      - ./certs:/app/certs
+      - ./.env:/app/.env:ro
+    networks:
+      - ejbca-network
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+networks:
+  ejbca-network:
+    driver: bridge
+
+volumes:
+  mariadb_data:
+  ejbca_data:

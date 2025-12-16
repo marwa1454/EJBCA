@@ -1,0 +1,16 @@
+# Variables d'environnement
+.env
+.env.local
+.env.production
+
+# Base de données locale
+*.db
+test.db
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
